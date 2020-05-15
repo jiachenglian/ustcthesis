@@ -83,7 +83,7 @@ $X_N$为所有顶点特征，$G$可以解释为前馈全连接神经网络
 
 \subsubsection{局限性}
 首先，用不动点的方式来计算隐藏状态需要的迭代次数过多，效率较低。
-其次，在迭代过程中使用相同的参数，而较普遍的做法是在不同的神经网络层使用不同的权值并一起训练，来作为分层特征提取的方法，这个问题在下文的GCN算法中得到了解决。
+其次，在迭代过程中使用相同的参数，而较普遍的做法是在不同的神经网络层使用不同的权值并一起训练，来作为分层特征提取的方法，这个问题在下文的图卷积网络算法中得到了解决。
 另外，更新顶点的隐藏状态是一个时序的过程，可以使用GRU、LSTM之类的RNN核。
 
 \section{图卷积网络算法}
@@ -163,7 +163,13 @@ $g_\theta*x=\theta(I_N+D^{-\frac{1}{2}}AD^{-\frac{1}{2}})x=\theta(\tilde{D}^{-1 
 \subsection{图卷积网络算法流程}
 与卷积神经网络类似，图卷积网络的一次前向传播也由各图卷积层堆叠而成。
 下文首先介绍一层图卷积层所作的计算，再介绍层之间的堆叠方式。
-算法的具体实现参考了图神经网络框架dgl源码。
+算法的具体实现参考了图神经网络框架DGL源码。
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{gcn.png}
+    \caption{图卷积网络计算过程}
+\end{figure}
 
 \subsubsection{图卷积层}
 
@@ -212,7 +218,7 @@ $g_\theta*x=\theta(I_N+D^{-\frac{1}{2}}AD^{-\frac{1}{2}})x=\theta(\tilde{D}^{-1 
     \centering
     \includegraphics[width=\textwidth]{graphsage.png}
     \caption{GraphSAGE计算过程}
-  \end{figure}
+\end{figure}
 
 GraphSAGE是Graph SAmple aggreGatE的缩写，即对图中各顶点的邻居进行采样和聚集，主要可以分为以下三个步骤
 \begin{enumerate}
@@ -270,8 +276,108 @@ GraphSAGE算法提出了聚集函数的概念，并且每次计算只使用一�
 
 \section{DiffPool算法}
 
-\section{算法共性和算子提炼}
+\subsection{算法简介}
+图上的机器学习问题一般包括顶点分类、链路预测和图分类。
+对于前两类问题，可以直接将局部的顶点特征提取后进行聚集(相加或取最大值)，比如图卷积网络算法和GraphSAGE算法中所做的。
+但对于图分类问题，为了从顶点嵌入得到图的表示，如果直接简单相加或取最大值会忽略顶点间可能存在的层次关系。
+据此，DiffPool算法提出了一个多层次的图神经网络模型，在每一层中不仅对顶点特征进行抽取，而且会把图结构重新聚合成一个更粗粒度的图以供下一层使用，这一步可以类比卷积神经网络中的池化层。
+经过多层的信息抽取，最后将得到可以用于图分类的一个顶点的向量。
 
-\subsection{聚集}
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{diffpool.png}
+    \caption{DiffPool计算过程}
+\end{figure}
 
-\subsection{组合}
+\subsection{算法流程}
+与介绍图卷积网络和GraphSAGE算法流程的方式类似，讨论一次前向传播的流程。
+本节先讨论一层DiffPool层所做的运算，再介绍层间的堆叠方式。
+
+\subsubsection{DiffPool层}
+\begin{definition}
+    一层运算涉及的公式如下
+    \begin{equation}
+        Z^{(l)}=\mathrm{GNN}_{l, \mathrm{embed}}\left(A^{(l)}, X^{(l)}\right) 
+    \end{equation}
+    \begin{equation}
+        S^{(l)}=\operatorname{softmax}\left(\mathrm{GNN}_{l, \mathrm{pool}}\left(A^{(l)}, X^{(l)}\right)\right)
+    \end{equation}
+    \begin{equation}
+        X^{(l+1)} =S^{(l)^{T}} Z^{(l)} \in \mathbb{R}^{n_{l+1} \times d}
+    \end{equation}
+    \begin{equation}
+        A^{(l+1)} =S^{(l)^{T}} A^{(l)} S^{(l)} \in \mathbb{R}^{n_{l+1} \times n_{l+1}}
+    \end{equation}
+    $A^{(l)}$表示第$l$层所用图的邻接矩阵，$X^{(l)}$表示第$l$层所有顶点的特征，$\mathrm{GNN}$可以使用上两节中的图卷积网络或GraphSAGE。
+    输入参数为$A^{(l)}$和$X^{(l)}$，输出参数为$A^{(l+1)}$和$X^{(l+1)}$
+\end{definition}
+
+一层运算使用两个参数不同的图神经网络模型，式(2.18)中的模型用于抽取特征得到$Z$，式(2.19)中的模型则用于生成分配矩阵$S$，它表示上层顶点特征以多少权值被分配到下层的哪些顶点中。
+式(2.20)和(2.21)用于生成下一层所需的新的粗粒度图，且第$l+1$层顶点数$n_{l+1}$小于第$l$层顶点数$n_l$。
+这种池化策略有较强的泛化能力，能在推理过程中适应不同的图结构。
+
+\subsubsection{层间堆叠}
+设总层数为$L$。
+
+第一层输入为原始图的邻接矩阵$A^{(0)}$和特征矩阵$X^{(0)}$
+
+中间第$l+1$层输入为第$l$层输出的邻接矩阵$A^{(l)}$和特征矩阵$X^{(l)}$
+
+倒数第二层(即第$L-1$层)DiffPool时将$S^{(L-1)}$设为全1的向量，那么在第$L$层将得到一个整个图的嵌入表示，可用于后续的图分类任务。
+
+\subsection{小结}
+相比于图卷积网络和GraphSAGE算法，DiffPool算法的主要工作在于借鉴卷积神经网络的池化层，提出了一种对图结构进行池化的方法，并且模型是可微的，可以使用随机梯度下降来进行训练。
+但缺点在于每次池化过程参数都不相同，需要分别训练，带来较大的计算成本和收敛难度。
+
+\section{算法共性和算子介绍}
+本节的主要目的是将前三节介绍的三个典型图神经网络算法中的相同部分提炼出来并形成算子，以便在后续的代码生成阶段尽可能的提高可重用性。
+
+\subsection{算法共性}
+根据前三节介绍的算法流程，图卷积网络可看作GraphSAGE算法的基础，而这二者又可视为DiffPool算法的基础。
+图卷积网络算法主要包括聚集、组合两个过程，GraphSAGE算法比图卷积网络算法多了对邻居的采样过程和不同的聚集方式，DiffPool算法则比前两者多了池化的过程和一些额外的矩阵乘法。
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{all.png}
+    \caption{总体计算流程}
+\end{figure}
+
+\subsection{算子介绍}
+根据上一小节所述，可以用以下四个算子实现三个典型算法：采样、聚集、组合、池化
+\subsubsection{采样}
+从每个顶点的邻居集合中选取包含固定数量顶点的子集，来作为该顶点新的邻居集合
+
+\subsubsection{聚集}
+将一个顶点邻居集合中所有顶点的特征向量按一定方式聚集成一个顶点向量，聚集方式有：相加、取平均值、经过非线性变换后取最大值等
+
+\subsubsection{组合}
+使用多层感知机(Multi-Layer Perceptron)将每个顶点的特征向量转变为其他长度的特征向量，但所有顶点共享相同的权值矩阵和偏差向量。
+主要为矩阵运算和非线性激活。
+
+\subsubsection{池化}
+类似于卷积神经网络的池化层，通过分配矩阵(assignment matrix)降低顶点数，具体做法见第五节算法流程部分
+
+\section{DGL图神经网络框架}
+由于在之前讲述算法流程时参考了DGL框架的源代码，故此处对DGL做简单的介绍。
+DGL(Deep Graph Library)是一个开源的图神经网络计算框架，由纽约大学和亚马逊公司主导开发，旨在为开发者提供一个基于现有深度学习框架(MXNet、PyTorch、TensorFlow)来进行图神经网络算法开发的平台。
+
+作为一个易使用、高性能、可扩展的Python包，DGL的设计秉承以下三个原则：
+\begin{itemize}
+    \item 必须与主流的深度学习框架(MXNet、PyTorch、TensorFlow)无缝衔接，能方便地从传统的张量计算转变为图计算
+    \item 应提供最少的API，降低用户的学习成本
+    \item 保证上面两点的基础上，能高效透明地完成计算任务，并能方便地扩展到大规模图上
+\end{itemize}
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=\textwidth]{dgl.png}
+    \caption{DGL整体架构图}
+\end{figure}
+
+从图2.5(DGL整体架构图)中可以看出，最上层是应用层，包括生命科学、知识图谱等；第二层有DGL框架定义的图结构、神经网络模块、消息传递接口和一些图算法；
+再下层是DGL的运行时库，这部分主要由C++实现，编译成链接库后供Python层调用；后端由深度学习框架(MXNet、PyTorch、TensorFlow)提供支持，可运行于CPU、GPU等硬件上。
+
+下面介绍上节列出的算子在DGL中的实现方法。聚集邻居顶点特征的过程在DGL框架中大致分为发送和接收两步。发送阶段将图中所有边源点的特征向量加权后沿着边向终点发送，接受阶段对每个顶点将沿着其邻边传递来的数据根据设定的聚集方式进行聚集。
+用户可以自定义消息传递函数和接受函数，具体实现参考DGL源代码的update\_all函数。
+组合过程和池化过程可以看成矩阵运算和非线性变换，主要由下层神经网络框架的线性层和激活函数实现。
+采样过程暂无简单易用的API，此处不表。
