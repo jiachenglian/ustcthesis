@@ -4,14 +4,13 @@
 
 \section{图神经网络概述}
 
-图神经网络(Graph Neural Network)是一种运行在图结构上的神经网络。
-传统神经网络一般只能处理欧几里得结构数据(Euclidean Structure Data)，如图像、视频、语音等。
-而图数据是一种蕴含着丰富的元素间关系信息的非欧几里得结构数据(Non-Euclidean Structure Data)，如知识图谱数据、蛋白质结构数据等。
-一些重要操作如卷积能在图像上运算，却不能在不规则的图数据上运算。
-针对图数据的图神经网络便应运而生，并在社交网络、推荐系统等领域大展身手，近年来对图神经网络算法的研究越来越受到学术界和工业界的关注。
+图神经网络是一种运行在图结构上的神经网络，是针对图数据设计的。
+传统神经网络一般只能处理欧几里得结构数据，如图像、视频、语音等。
+而图数据是一种蕴含着丰富的元素间关系信息的非欧几里得结构数据，如知识图谱数据、蛋白质结构数据等。
+相比于传统神经网络，图神经网络在处理社交网络、推荐系统等领域中的图数据时更具优势。
 
-对图神经网络的研究与卷积神经网络(Convolutional Neural Network)的发展密不可分，后者能够提取多尺度的空间局部特征并将其组合成具有高表达性的表示，而图神经网络本质上也是提取拓扑图的空间特征并进行聚集。
-但区别在于，卷积神经网络按照特定的顺序对顶点的特征进行叠加，且不考虑顶点间的关系，而图中没有自然顺序，图神经网络在每个顶点分别传播，与输入顺序无关，一般用顶点邻居状态的加权和更新顶点的隐藏状态(hidden state)。
+对图神经网络的研究与卷积神经网络的发展密不可分，后者能够进行特征提取并将其组合成具有高表达性的表示，而图神经网络本质上也是提取拓扑图的空间特征并进行聚集。
+但区别在于，卷积神经网络按照特定的顺序对顶点的特征进行叠加，且不考虑顶点间的关系，而图中没有自然顺序，图神经网络在每个顶点分别传播，与输入顺序无关，一般用顶点邻居状态的加权和更新顶点的隐藏状态。
 
 \section{图神经网络结构}
 
@@ -51,8 +50,8 @@
 
 \subsection{原始图神经网络模型}
 
-图神经网络的概念首先是由F. Scarselli等人于2009年提出的，为了解决根据图上部分已标记顶点预测未标记顶点的问题。
-原始图神经网络模型主要由两个部分组成，传播(propagation)和输出(output)
+图神经网络的概念首先是由Franco Scarselli等人于2009年提出的\cite{franco}，为了解决根据图上部分已标记顶点预测未标记顶点的问题。
+原始图神经网络模型主要由两个部分组成，传播和输出。
 
 \subsubsection{传播}
 将各个顶点的包含邻居信息进行聚集，得到状态表示$h_v$，可用于生成输出
@@ -84,7 +83,7 @@ $X_N$为所有顶点特征，$G$可以解释为前馈全连接神经网络
 \subsubsection{局限性}
 首先，用不动点的方式来计算隐藏状态需要的迭代次数过多，效率较低。
 其次，在迭代过程中使用相同的参数，而较普遍的做法是在不同的神经网络层使用不同的权值并一起训练，来作为分层特征提取的方法，这个问题在下文的图卷积网络算法中得到了解决。
-另外，更新顶点的隐藏状态是一个时序的过程，可以使用GRU、LSTM之类的RNN核。
+另外，更新顶点的隐藏状态是一个时序的过程，可以使用GRU、LSTM之类的循环神经网络核。
 
 \section{图卷积网络算法}
 卷积神经网络模型在图像识别、自然语言处理等方面取得了巨大成果，卷积的本质就是利用核函数来加权求和来实现特征提取。受此启发，在图结构上重新定义卷积运算的工作开始不断出现。
@@ -120,7 +119,7 @@ $X_N$为所有顶点特征，$G$可以解释为前馈全连接神经网络
 \end{definition}
 
 \subsection{初代图卷积网络}
-J. Bruna在2014年提出了第一代图卷积网络(Graph Convolutional Network)，主要是将定义2.6中$\mathcal{F}[f_2(\Lambda)]$换成卷积核$diag(\theta_i)$
+J. Bruna在2014年提出了第一代谱图卷积网络\cite{gcn_spectral}，主要是将定义2.6中$\mathcal{F}[f_2(\Lambda)]$换成卷积核$diag(\theta_i)$
 
 \subsubsection{初代模型}
 \begin{definition}
@@ -141,7 +140,7 @@ J. Bruna在2014年提出了第一代图卷积网络(Graph Convolutional Network)
 每次前向传播都要计算$U diag(\theta_i) U^T$三者乘积，对于大规模图来说代价较高，另外从L进行特征分解得到U的代价也较大
 
 \subsection{用切比雪夫多项式作卷积核的图卷积网络}
-将卷积核$g_\theta(\Lambda)$用Chebyshef多项式$T_k(y)=cos(k\ arccos(y))$逼近
+将卷积核$g_\theta(\Lambda)$用切比雪夫多项式$T_k(y)=cos(k\ arccos(y))$逼近\cite{gcn_cheb}
 
 有$g_\theta(\Lambda)\approx \Sigma_{k=0}^K\theta_kT_k(\tilde \Lambda)$
 
@@ -149,7 +148,7 @@ $\tilde \Lambda=\frac{2\Lambda}{\lambda_{max}}-I_N$，其中$\lambda_{max}$为�
 
 此时考虑卷积$g_\theta*x\approx \Sigma_{k=0}^K\theta_kT_k(\tilde L)x$，其中$\tilde L=\frac{2L}{\lambda_{max}}-I_N$
 
-取$\lambda_{max}\approx2,K=1,\theta_0=-\theta_1=\theta$
+取$\lambda_{max}\approx2,K=1,\theta_0=-\theta_1=\theta$，此时变为一阶切比雪夫卷积网络\cite{gcn}
 
 $g_\theta*x=\theta(I_N+D^{-\frac{1}{2}}AD^{-\frac{1}{2}})x=\theta(\tilde{D}^{-1 / 2} \tilde{A} \tilde{D}^{-1 / 2})x$，其中$\tilde{A}=A+I_N$，$\tilde{D}=D+I_N$
 
@@ -211,21 +210,21 @@ $g_\theta*x=\theta(I_N+D^{-\frac{1}{2}}AD^{-\frac{1}{2}})x=\theta(\tilde{D}^{-1 
 \section{GraphSAGE算法}
 
 \subsection{算法简介}
-考虑到图卷积网络要求在训练过程中图的所有顶点均出现，这种直推式(transductive)的训练多用于固定的图，泛化能力较弱，无法对未出现过的顶点作出准确的预测。
-本节介绍的GraphSAGE算法是一种归纳式(inductive)的训练，直接训练顶点的表示方法，能高效地利用顶点信息为未出现过的顶点生成嵌入(embedding)。
+考虑到图卷积网络要求在训练过程中图的所有顶点均出现，这种直推式的训练多用于固定的图，泛化能力较弱，无法对未出现过的顶点作出准确的预测。
+本节介绍的GraphSAGE算法\cite{graphsage}是一种归纳式的训练，直接训练顶点的表示方法，能高效地利用顶点信息为未出现过的顶点生成嵌入。
+
+GraphSAGE是Graph SAmple aggreGatE的缩写，即对图中各顶点的邻居进行采样和聚集，主要可以分为以下三个步骤，如图2.2所示\footnote{图2.2引用自论文Inductive representation learning on large graphs}
+\begin{enumerate}
+    \item 为每个顶点选取一定数量的邻居
+    \item 根据聚集函数聚集邻居所蕴含的信息
+    \item 得到图中各顶点的嵌入供下一层使用
+\end{enumerate}
 
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{graphsage.png}
     \caption{GraphSAGE计算过程}
 \end{figure}
-
-GraphSAGE是Graph SAmple aggreGatE的缩写，即对图中各顶点的邻居进行采样和聚集，主要可以分为以下三个步骤
-\begin{enumerate}
-    \item 为每个顶点选取一定数量的邻居
-    \item 根据聚集函数聚集邻居所蕴含的信息
-    \item 得到图中各顶点的嵌入供下一层使用
-\end{enumerate}
 
 \subsection{算法流程}
 与介绍图卷积网络算法流程的方式类似，讨论一次前向传播的流程。
@@ -259,7 +258,7 @@ GraphSAGE是Graph SAmple aggreGatE的缩写，即对图中各顶点的邻居进�
 \end{itemize}
 
 \paragraph{拼接函数}
-考虑矩阵形式的算法迭代。矩阵$H_{自身}$和$H_{邻居}$的大小都为顶点数$\times$输入特征长度，将两个矩阵按列拼接，得到大小为顶点数$\times$两倍输入特征长度的矩阵。
+考虑矩阵形式的算法迭代。矩阵$H_{self}$即原顶点特征和$H_{\mathcal{N}(i)}$的大小都为顶点数$\times$输入特征长度，将两个矩阵按列拼接，得到大小为顶点数$\times$两倍输入特征长度的矩阵。
 同时$W$的大小应为两倍特征长度$\times$输出特征长度。
 
 \subsubsection{层间堆叠}
@@ -280,7 +279,8 @@ GraphSAGE算法提出了聚集函数的概念，并且每次计算只使用一�
 图上的机器学习问题一般包括顶点分类、链路预测和图分类。
 对于前两类问题，可以直接将局部的顶点特征提取后进行聚集(相加或取最大值)，比如图卷积网络算法和GraphSAGE算法中所做的。
 但对于图分类问题，为了从顶点嵌入得到图的表示，如果直接简单相加或取最大值会忽略顶点间可能存在的层次关系。
-据此，DiffPool算法提出了一个多层次的图神经网络模型，在每一层中不仅对顶点特征进行抽取，而且会把图结构重新聚合成一个更粗粒度的图以供下一层使用，这一步可以类比卷积神经网络中的池化层。
+据此，DiffPool算法\cite{diffpool}提出了一个多层次的图神经网络模型，如图2.3所示\footnote{图2.3引用自论文Hierarchical graph representation learning with
+differentiable pooling}，在每一层中不仅对顶点特征进行抽取，而且会把图结构重新聚合成一个更粗粒度的图以供下一层使用，这一步可以类比卷积神经网络中的池化层。
 经过多层的信息抽取，最后将得到可以用于图分类的一个顶点的向量。
 
 \begin{figure}[htb]
@@ -336,26 +336,26 @@ GraphSAGE算法提出了聚集函数的概念，并且每次计算只使用一�
 根据前三节介绍的算法流程，图卷积网络可看作GraphSAGE算法的基础，而这二者又可视为DiffPool算法的基础。
 图卷积网络算法主要包括聚集、组合两个过程，GraphSAGE算法比图卷积网络算法多了对邻居的采样过程和不同的聚集方式，DiffPool算法则比前两者多了池化的过程和一些额外的矩阵乘法。
 
+\subsection{算子介绍}
+根据上一小节所述，可以用以下四个算子实现三个典型算法：采样、聚集、组合、池化，如图2.4所示\footnote{图2.4引用自论文Hygcn: A GCN accelerator with hybrid architec­ture}。
+
 \begin{figure}[htb]
     \centering
     \includegraphics[width=\textwidth]{all.png}
     \caption{总体计算流程}
 \end{figure}
 
-\subsection{算子介绍}
-根据上一小节所述，可以用以下四个算子实现三个典型算法：采样、聚集、组合、池化
 \subsubsection{采样}
 从每个顶点的邻居集合中选取包含固定数量顶点的子集，来作为该顶点新的邻居集合
 
 \subsubsection{聚集}
-将一个顶点邻居集合中所有顶点的特征向量按一定方式聚集成一个顶点向量，聚集方式有：相加、取平均值、经过非线性变换后取最大值等
+对一个顶点来说，聚集是将该顶点所有采样所得邻居顶点的特征向量按邻边权值加权后，以一定方式聚集成一个顶点向量，聚集方式有：相加、取平均值、经过非线性变换后取最大值等
 
 \subsubsection{组合}
-使用多层感知机(Multi-Layer Perceptron)将每个顶点的特征向量转变为其他长度的特征向量，但所有顶点共享相同的权值矩阵和偏差向量。
-主要为矩阵运算和非线性激活。
+对一个顶点来说，组合是将该顶点聚集所得结果的特征向量与该顶点原特征向量拼接后，做线性变换和非线性激活，转变为其他长度的特征向量，但所有顶点共享相同的权值矩阵和偏差向量
 
 \subsubsection{池化}
-类似于卷积神经网络的池化层，通过分配矩阵(assignment matrix)降低顶点数，具体做法见第五节算法流程部分
+类似于卷积神经网络的池化层，先进行一次聚集运算和组合运算得到分配矩阵(assignment matrix)，再通过分配矩阵降低顶点数和产生新的顶点特征，具体做法见第五节算法流程部分
 
 \section{DGL图神经网络框架}
 由于在之前讲述算法流程时参考了DGL框架的源代码，故此处对DGL做简单的介绍。
@@ -374,7 +374,7 @@ DGL(Deep Graph Library)是一个开源的图神经网络计算框架，由纽约
     \caption{DGL整体架构图}
 \end{figure}
 
-从图2.5(DGL整体架构图)中可以看出，最上层是应用层，包括生命科学、知识图谱等；第二层有DGL框架定义的图结构、神经网络模块、消息传递接口和一些图算法；
+从图2.5(DGL整体架构图)\footnote{图2.5引用自DGL官网，http://data.dgl.ai/asset/image/DGL-Arch.png}中可以看出，最上层是应用层，包括生命科学、知识图谱等；第二层有DGL框架定义的图结构、神经网络模块、消息传递接口和一些图算法；
 再下层是DGL的运行时库，这部分主要由C++实现，编译成链接库后供Python层调用；后端由深度学习框架(MXNet、PyTorch、TensorFlow)提供支持，可运行于CPU、GPU等硬件上。
 
 下面介绍上节列出的算子在DGL中的实现方法。聚集邻居顶点特征的过程在DGL框架中大致分为发送和接收两步。发送阶段将图中所有边源点的特征向量加权后沿着边向终点发送，接受阶段对每个顶点将沿着其邻边传递来的数据根据设定的聚集方式进行聚集。

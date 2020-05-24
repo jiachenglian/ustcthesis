@@ -8,7 +8,8 @@
 
 % 加载宏包、全部的配置
 \input{ustcsetup.tex}
-
+\usepackage{listings}
+\usepackage{xcolor}
 
 \begin{document}
 
@@ -26,7 +27,6 @@
 %   appendix: 附录
 
 \maketitle
-\copyrightpage
 
 \frontmatter
 \input{chapters/acknowledgements.tex}
@@ -39,15 +39,12 @@
 \input{chapters/introduction.tex}
 \input{chapters/gnn_alg.tex}
 \input{chapters/gnn_acc.tex}
-\input{chapters/code_gen.tex}
-\input{chapters/citations.tex}
+\input{chapters/inst_gen.tex}
+\input{chapters/summary.tex}
 
 \backmatter
-\bibliographystyle{ustcthesis-numerical}  % 顺序编码制
-% \bibliographystyle{ustcthesis-authoryear} % 著者出版年制
-% \bibliographystyle{ustcthesis-bachelor}   % 本科生参考文献的格式
-\bibliography{bib/ustc}
+\bibliographystyle{ustcthesis-bachelor}   % 本科生参考文献的格式
+\bibliography{bib/ref}
 
 \appendix
-\input{chapters/complementary.tex}
 \end{document}

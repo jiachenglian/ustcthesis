@@ -1,0 +1,219 @@
+% !TeX root = ../main.tex
+
+\lstset{numbers=left,
+numberstyle= \tiny, 
+keywordstyle= \color{ blue!70},commentstyle=\color{red!50!green!50!blue!50}, 
+frame=shadowbox, 
+rulesepcolor= \color{ red!20!green!20!blue!20} 
+} 
+
+\chapter{指令生成}
+
+\section{指令设计}
+本节根据第二章图神经网络算法提炼出的算子和第三章介绍的混合结构图神经网络加速器架构，设计一些能运行在加速器上并利用部分硬件所做优化的指令。
+相比于用较粗粒度的算子描述算法，指令设计则进一步将算法的执行流程细化，并且作为软硬件接口，既应体现混合结构加速器的特点，也应体现算法的特性。
+指令长度为64位，操作码占6位，地址寄存器的编号占6位，其他部分见具体指令的说明。
+由于标量指令相比于向量指令对性能的影响很小，且较为繁琐，故此处不进行罗列。
+
+\subsection{访存指令}
+访存指令主要分为读数据指令和写数据指令两部分，由于访存空间较大，须将访存地址存放在寄存器中。
+
+\subsubsection{读数据}
+读指令用于读入边、输入向量、参数矩阵等数据，以供后续运算。
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    load dst,src,length
+\end{lstlisting}
+该指令操作码占8位，两个寄存器编号各占6位，立即数占12位。
+表示将内存中从src寄存器所指地址开始长度为length的数据读入缓冲区从寄存器dst所指地址开始的块中，包括边缓冲区、输入缓冲区、参数缓冲区。
+
+\subsubsection{写数据}
+由于聚集的中间结果存放在聚集缓冲区中，不需要写出至内存，故写指令只用于将一层图神经网络运算的输出结果写进内存。
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    store dst,src,length
+\end{lstlisting}
+该指令操作码占8位，两个寄存器编号各占6位，立即数占12位。
+表示将缓冲区中从src寄存器所指地址开始长度为length的数据写入内存从寄存器dst所指地址开始的块中。
+
+\subsection{聚集引擎指令}
+考虑到聚集引擎中有采样器和边任务分配器以及大量SIMD核，将聚集过程的指令分为邻居采样和运算指令两部分。
+
+\subsubsection{邻居采样}
+对邻居采样的过程一般在数据预处理时进行，由采样器完成，主要目的是减少聚集过程的运算量。
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sample dst,src,edge_num,sample_num
+\end{lstlisting}
+该指令操作码占8位，两个寄存器编号各占6位，两个立即数各占12位。
+表示对从src寄存器所指地址开始的edge\_num条边进行采样，每个顶点最多有sample\_num条邻边，结果存放在dst寄存器所指地址。
+
+\subsubsection{聚集运算}
+聚集运算主要为SIMD核中的向量运算。
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_vav dst,src1,src2,length
+\end{lstlisting}
+指令simd\_vav操作码占8位，三个寄存器编号各占6位，立即数占12位。
+表示将长度都为length的两个向量src1和src2相加，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_vmv dst,src1,src2,length
+\end{lstlisting}
+指令simd\_vmv操作码占8位，三个寄存器编号各占6位，立即数占12位。
+表示将长度都为length的两个向量src1和src2逐元素相乘，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_vms dst,src1,src2,length
+\end{lstlisting}
+指令simd\_vms操作码占8位，三个寄存器编号各占6位，立即数占12位。
+表示将长度为length的向量src1逐元素与标量src2相乘，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_vmm dst,src1,src2,length1,length2
+\end{lstlisting}
+指令simd\_vmm操作码占8位，三个寄存器编号各占6位，两个立即数各占12位。
+表示将长度为length1的向量src1与大小为length1$\times$legnth2的矩阵src2相乘，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_vmax dst,src1,src2,length
+\end{lstlisting}
+指令simd\_vmax操作码占8位，三个寄存器编号各占6位，立即数占12位。
+表示将长度都为length的向量src1和src2逐元素取较大值，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+    simd_set dst,value,length
+\end{lstlisting}
+指令simd\_set操作码占8位，两个寄存器编号各占6位，立即数占12位。
+表示将从dst开始长度为length的内容都设置为值value。
+
+\subsection{组合引擎指令}
+组合引擎中有大量用于进行矩阵运算的脉动阵列和用于取非线性激活的激活单元，故将指令分为矩阵运算和非线性激活运算。
+由于行向量和列向量分别可以表示为第0维为1和第1维为1的矩阵，故不专门提供向量与矩阵或向量的运算指令。
+
+\subsubsection{矩阵运算}
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_mmm dst,src1,src2,m,k,n
+\end{lstlisting}
+指令sa\_mmm操作码占8位，三个寄存器编号各占6位，三个立即数各占12位。
+表示将大小为m$\times$k的矩阵src1与大小为k$\times$n的矩阵src2做矩阵乘法，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_mam dst,src1,src2,m,n
+\end{lstlisting}
+指令sa\_mam表示操作码占8位，三个寄存器编号各占6位，两个立即数各占12位。
+将大小都为m$\times$n的矩阵src1与src2做矩阵加法，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_concat_r dst,src1,src2,m,k,n
+\end{lstlisting}
+指令sa\_concat\_r操作码占8位，三个寄存器编号各占6位，三个立即数各占12位。
+表示将大小为m$\times$k的矩阵src1与大小为m$\times$n的矩阵按行拼接成大小为m$\times$(k+n)的矩阵，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_concat_c dst,src1,src2,m,k,n
+\end{lstlisting}
+指令sa\_concat\_c操作码占8位，三个寄存器编号各占6位，三个立即数各占12位。
+表示将大小为m$\times$n的矩阵src1与大小为k$\times$n的矩阵按列拼接成大小为(m+k)$\times$n的矩阵src2做矩阵乘法，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_transpose dst,src,m,n
+\end{lstlisting}
+指令sa\_transpose操作码占8位，三个寄存器编号各占6位，两个立即数各占12位。
+表示将大小为m$\times$n的矩阵进行转置，结果放在dst中。
+
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_softmax dst,src,m,n
+\end{lstlisting}
+指令sa\_softmax操作码占8位，两个寄存器编号各占6位，两个立即数各占12位。
+表示将大小为m$\times$n的矩阵做softmax运算，结果放在dst中。
+
+\subsubsection{非线性激活}
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    sa_act dst,src,m,n,type
+\end{lstlisting}
+指令sa\_act操作码占8位，两个寄存器编号各占6位，三个立即数各占12位。
+表示将大小为m$\times$n的矩阵根据type的值做非线性激活，type为0表示无激活，1表示ReLu激活，2表示Sigmoid激活，3表示tanh激活。
+
+\section{朴素的指令生成模式}
+由于在第二章介绍的三个主流图神经网络算法都可以用第二章第六节提炼出的四个算子拼接实现，接下来的工作是将这四个算子用上一节设计的指令实现，完成后可以得到前述三个算法能直接在混合结构图神经网络加速器上运行的指令。
+这一版本生成的指令都是串行执行的，没有过多优化，故称为朴素的指令生成模式。
+
+\subsection{算子指令生成}
+
+\subsubsection{采样}
+对邻居采样的过程在硬件上主要由采样器完成，故通过采样指令sample实现。
+采样算子的输入为原始边数据地址、边数、采样数(即一个顶点的邻居数)，输出为采样后的边信息。
+
+\subsubsection{聚集}
+考虑一个顶点的聚集过程，先遍历该顶点所有采样所得的邻居索引用load指令将边信息从内存读入边缓冲区，包括边的源点、终点和边上的权值，再用load指令将源点对应的特征向量从内存读入输入缓冲区中，接下来根据聚集的类型对输入缓冲区中的向量做不同运算，如按边权值加权求和、取平均值、取最大值等，在上节的聚集运算指令(前缀为simd\_)中选取适当指令并加以组合即可，中间结果和聚集结果存放在聚集缓冲区中，无须写出至内存。
+聚集算子的输入为边数据、所有顶点特征向量、聚集方式，输出为聚集运算的结果。
+
+\subsubsection{组合}
+考虑一个顶点的组合过程，先用sa\_concat\_r指令将聚集缓冲区中该顶点的聚集结果与输入缓冲区该顶点的原特征向量拼接，结果用sa\_mmm指令与权值矩阵相乘，再用sa\_mam指令与偏差向量相加，用act指令取激活，最后用store指令将结果写回内存。
+由于在一层图神经网络运算中，所有顶点共用相同的权值矩阵和偏差向量，故可在该层运算开始时就将参数从内存读入参数缓冲区。
+组合算子的输入为聚集结果、权值矩阵、偏差向量、激活类型，输出为组合运算的结果。
+
+\subsubsection{池化}
+根据第二章第五节的公式(2.18)和(2.19)，池化出现在一次图神经网络运算(即聚集和组合）之后，记结果为Z。
+池化过程还需要进行一次聚集和组合运算，经softmax运算之后得到S并写回内存，考虑到使用池化算子的DiffPool所用的数据集一般较小，故用load指令将S读入参数缓冲区中，再选用适当的组合引擎指令根据式(2.20)和(2.21)进行矩阵运算，最后用store指令将新的顶点特征和邻接矩阵写入内存。
+池化算子的输入为前一次聚集组合后的结果、邻接矩阵，输出为新的邻接矩阵和顶点特征。
+
+\subsection{算法指令生成}
+有了上一小节的算子指令，图神经网络算法的指令生成变得较为方便，只需要将算法用算子描述，并传递正确的参数即可。
+
+\subsubsection{图卷积网络算法}
+考虑一层图卷积运算，可以将其看做是对图中所有顶点都进行一次聚集运算和组合运算，组合运算的输入为聚集运算的输出。
+故只要对所有顶点做一次循环，循环内调用一次聚集算子和组合算子即可。
+
+\subsubsection{GraphSAGE算法}
+与图卷积网络算法类似，不同之处在于聚集类型，前者为加权相加的聚集，GraphSAGE可以选择取平均或取最大值的聚集方式。
+另外，前者在组合时虽然将聚集得到的顶点特征与原顶点特征拼接，但实际并不使用原顶点特征，即权值矩阵与原顶点特征对应相乘的部分全为0。
+而GraphSAGE算法则需要原顶点特征，权值矩阵对应部分不全为0。
+
+\subsubsection{DiffPool算法}
+考虑一层的运算，先进行一次聚集和组合运算，用得到的结果作为输入再进行一次池化即可。
+与前两个算法不同的是，池化运算更新了图结构，下一层的运算应使用新的图。
+
+\section{软件流水优化}
+考虑到上节介绍的指令生成模式产生的代码串行执行效率较低，本节针对图卷积网络算法用上述模式产生的指令进行软件流水优化。
+事实上串行指令和软流水指令在实际执行时都需要插入用于同步的指令，故本章先介绍sync指令，再介绍具体的优化方法。
+
+\subsection{同步指令}
+由于指令序列在进入加速器后会按照类型被分到不同部件上执行，而每条指令的执行速度不完全相同，因而指令的发射顺序并不一定是指令的实际执行顺序。
+同步指令sync就是为了解决这个问题而出现的，其作用是等待之前的指令都执行完成后立即执行sync之后的指令。
+当指令序列中出现sync指令时，该指令将被分到所有部件上。
+
+在第三章介绍的混合结构图神经网络加速器中，需要同步的主要是聚集引擎、组合引擎和DMA三个部件。
+具体实现可以在三个部件中分别加入两个状态位寄存器，用于表示等待和完成，等待位寄存器为1表示阻塞，所有部件的完成位都为1时将所有部件的等待位寄存器清零，可以继续执行后续指令。
+没有遇到sync指令时，两个寄存器的值都为0，指令在部件中无阻塞地执行。
+当某个部件执行到sync指令时，表示该部件中sync之前的指令已执行完毕，将完成位寄存器置1，同时将等待位寄存器置1，阻塞后续指令。
+当其他所有部件都执行到sync指令时，所有部件的完成位寄存器都为1，广播此信号并将所有部件的等待位清零，继续执行后续指令，并将完成位也清零。
+
+\subsection{具体优化过程}
+软件流水技术主要通过重新构建循环体，让循环体内执行的指令来自不同的循环过程。
+
+图卷积网络生成指令的朴素版本中有两层循环，外层是对所有顶点的循环，内层是对一个顶点所有邻居的循环。
+首先考虑内部循环，主要涉及读取邻边信息和邻居顶点特征向量、对顶点特征向量按边权值加权求和两个过程，前者访存，后者为SIMD核中的计算，显然后者计算所需的数据依赖于前者的访存结果，故在朴素版本中这两个过程之间应该加入一条sync指令，否则计算所用的数据可能不是访存得到的正确数据，另外循环体末尾也需要一条sync指令以确保下次循环的不会出错。
+对于软流水版本，下面用伪代码展示内层循环过程以便于叙述。
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    load edge_{j+1}
+    load feature_{j+1}
+    simd_vms feature_j,feature_j,edge_j.weight
+    simd_vav aggr,aggr,feature_j
+    sync
+\end{lstlisting}
+可以看出SIMD核中计算所用的数据为上一轮循环中访存得到的数据，因此访存和向量运算之间不存在数据相关，而两条load指令和simd指令在各自部件的指令队列中，硬件上会做调度，故只需要在循环体末尾加一条sync指令即可。
+此外，第一次访存和最后一次聚集运算须在循环之外单独写出。
+
+对于外部循环，主要涉及聚集、组合、结果写出三个过程，分别在聚集引擎、组合引擎、DMA三个部件中进行，显然组合依赖聚集阶段的结果，写出依赖组合阶段的结果，故朴素版本中需要再聚集与组合之间、组合与写出之间插入两条sync指令，另外外层循环末尾也需要一条sync指令。
+对于软流水版本，下面仍用伪代码展示外层循环以便于叙述。
+\begin{lstlisting}[language={[x86masm]Assembler}] 
+    soft_pipeline_aggr aggr_i
+    sa_vmm output_{i-1},aggr_{i-1},weight
+    sa_vav output_{i-1},output_buf_{i-1},bias
+    sa_act output_{i-1},output_{i-1},relu
+    store output_{i-2}, mem_{i-2}
+    sync
+\end{lstlisting}
+第1行即前述内层循环所做顶点聚集操作的软件流水版本，可以看出组合所用的数据为上一轮循环中聚集得到的存放在聚集缓冲区里的数据，写出所用的数据为上一轮循环中组合得到的存放在输出缓冲区里的数据，写出与聚集所用的数据差了两轮循环。
+由于循环体内涉及三个部件之间的指令不存在数据相关，三个部件内部的指令顺序由各自硬件决定，只需要在循环体末尾加一条sync指令。
+另外，第一次聚集、第二次聚集与第一次组合须在外层循环前写出，最后一次组合、倒数第二次写出与最后一次写出须在外层循环后写出。
+
+相比于朴素版本，软流水版本对内外两层循环进行重构，有效消除了数据相关，一定程度上提高了运算效率。
